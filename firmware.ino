@@ -3,7 +3,7 @@
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
+    the Free Software Foundation, either version 3 of the License, or
     any later version.
 
     This program is distributed in the hope that it will be useful,
@@ -20,6 +20,7 @@
 #include "Dac.h"
 #include <LiquidCrystal.h>
 #include <avr/wdt.h>
+#include <FreeRTOS_AVR.h>
 
 LiquidCrystal lcd(8, 7, 2, 3, 4, 5);
 
@@ -62,15 +63,37 @@ void setup() {
   pinMode(relayPin,OUTPUT);
   digitalWrite(settingPin, HIGH);
   lcd.clear();
-  lcd.print("Firmware  v1.31");
+  lcd.print("Firmware  v2.00");
   lcd.setCursor(0,1);
   lcd.print(" Grizlieureka  ");
   delay(2500);
+  //vTaskDelay((2500L * configTICK_RATE_HZ) / 1000L);
   setValues();
   delay(2500);
+  //vTaskDelay((2500L * configTICK_RATE_HZ) / 1000L);
   wdt_enable(WDTO_8S);
   lcd.clear();
   PrintLCD();
+  
+      // create
+  xTaskCreate(vCSGenTask,
+    "Task1",
+    configMINIMAL_STACK_SIZE + 120,
+    NULL,
+    tskIDLE_PRIORITY,
+    NULL);
+
+
+  // create
+  xTaskCreate(vToggleTask,
+    "Task2",
+    configMINIMAL_STACK_SIZE + 20,
+    NULL,
+    tskIDLE_PRIORITY,
+    NULL);
+
+  // start FreeRTOS
+  vTaskStartScheduler();
 }
 
 void PrintLCD(){
@@ -122,7 +145,8 @@ void setOutputVoltage(){
   if (setTmp > 1024) setTmp = 1024;
   if (setTmp < 0) setTmp = 0;
   dac.write(setTmp);
-  delay(1);
+  //delay(1);
+  vTaskDelay((1L * configTICK_RATE_HZ) / 1000L);
   dac.write(setTmp);
 }
 
@@ -161,16 +185,24 @@ void relayToggle(){
 }
 
 void loop() {
+}
+
+static void vCSGenTask(void *pvParameters){
+  for(;;){
+
   if (digitalRead(settingPin) == LOW ){ //ako je postavljen setup mode
-    delay(100);
+    //delay(100);
+    vTaskDelay((100L * configTICK_RATE_HZ) / 1000L);
     if (digitalRead(settingPin) == LOW ){
       dac.write(setTmp);
-      delay(1);
+      //delay(1);
+      vTaskDelay((1000L * configTICK_RATE_HZ) / 1000L);
       dac.write(setTmp);
       lcd.setCursor(0,0);
       lcd.print("** Setup Mode **");
       setValues();
-      delay(20);
+      //delay(20);
+      vTaskDelay((20L * configTICK_RATE_HZ) / 1000L);
     }
   }
   else{
@@ -185,11 +217,23 @@ void loop() {
     setOutputVoltage();
     myloop = myloop + 1;
   }
-  if (relayTick > 21942){ // 512 je 7 sec, 
-    relayTick = 0;
-    relayToggle();
+  //delay(1);
+  //vTaskDelay((1L * configTICK_RATE_HZ) / 1000L);
+  wdt_reset();
+  }
+}
+
+static void vToggleTask(void *pvParameters){
+  relayTick = 0;
+  while(1){
+  if (relayTick > 300){
+      relayTick = 0;
+      relayToggle();
   }
   relayTick = relayTick + 1;
-  delay(1);
-  wdt_reset();
+  // Sleep for 150 milliseconds.
+  //vTaskDelay((150L * configTICK_RATE_HZ) / 1000L);
+  //sleep for 1 second
+  vTaskDelay((1000L * configTICK_RATE_HZ) / 1000L);
+  }
 }
